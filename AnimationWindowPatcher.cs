@@ -608,18 +608,34 @@ namespace BetterAnimations
                 parentWindow.Repaint();
             }
 
-            // CRITICAL: Consume events at the END after our controls have processed them
-            // This prevents events from passing through to the underlying Animation window controls
+            // CRITICAL: Only consume events in non-interactive areas to prevent passthrough
+            // Don't consume events in header/settings areas - controls need them!
+            // Only block events in the waveform content area
             if (mouseOverOverlay)
             {
-                if (evt.type == EventType.MouseDown ||
-                    evt.type == EventType.MouseUp ||
-                    evt.type == EventType.MouseDrag ||
-                    evt.type == EventType.MouseMove ||
-                    evt.type == EventType.ScrollWheel ||
-                    evt.type == EventType.ContextClick)
+                // Calculate the content area (below header and settings panel)
+                float contentStartY = waveformY + headerHeight + settingsPanelHeight;
+                bool mouseOverContentArea = evt.mousePosition.y >= contentStartY;
+
+                // Only consume events if in the waveform content area (not over controls)
+                if (mouseOverContentArea)
                 {
-                    evt.Use();
+                    if (evt.type == EventType.MouseDown ||
+                        evt.type == EventType.MouseUp ||
+                        evt.type == EventType.MouseDrag ||
+                        evt.type == EventType.MouseMove ||
+                        evt.type == EventType.ScrollWheel ||
+                        evt.type == EventType.ContextClick)
+                    {
+                        evt.Use();
+                    }
+                }
+                // For header/settings area, only consume non-interactive background events
+                else
+                {
+                    // Let controls handle their events, only block background clicks
+                    // The manual buttons already call evt.Use() when clicked
+                    // Other controls (dropdowns, sliders) handle events automatically
                 }
             }
         }
