@@ -336,20 +336,32 @@ namespace BetterAnimations
             float headerHeight = 25f;
             float waveformY = dopeSheetRect.y + dopeSheetRect.height - actualHeight;
 
+            // Calculate total overlay area (header + settings panel if visible + content)
+            float settingsPanelHeight = (showSettings && audioClip != null) ? 65f : 0f;
+            float totalOverlayHeight = actualHeight + settingsPanelHeight;
+            Rect totalOverlayRect = new Rect(dopeSheetRect.x, waveformY, dopeSheetRect.width, totalOverlayHeight);
+
+            // CRITICAL: Block ALL events over our overlay to prevent passthrough to underlying controls
+            Event evt = Event.current;
+            bool mouseOverOverlay = totalOverlayRect.Contains(evt.mousePosition);
+
+            if (mouseOverOverlay)
+            {
+                // Consume all mouse events to prevent interaction with timeline below
+                if (evt.type == EventType.MouseDown ||
+                    evt.type == EventType.MouseUp ||
+                    evt.type == EventType.MouseDrag ||
+                    evt.type == EventType.ScrollWheel)
+                {
+                    // Mark that we're handling this event
+                    // We'll consume it after our controls process it
+                }
+            }
+
             // Draw header with improved styling
             Rect headerRect = new Rect(dopeSheetRect.x, waveformY, dopeSheetRect.width, headerHeight);
             EditorGUI.DrawRect(headerRect, new Color(0.22f, 0.22f, 0.22f, 1f));
             EditorGUI.DrawRect(new Rect(dopeSheetRect.x, waveformY, dopeSheetRect.width, 1), new Color(0.4f, 0.4f, 0.4f, 0.5f));
-
-            // Handle all GUI controls BEFORE any clipping
-            Event evt = Event.current;
-
-            // Consume mouse events over our header to prevent interaction with underlying elements
-            if (headerRect.Contains(evt.mousePosition) &&
-                (evt.type == EventType.MouseDown || evt.type == EventType.MouseUp || evt.type == EventType.MouseDrag))
-            {
-                // Don't use the event yet, let our controls handle it first
-            }
 
             float xOffset = dopeSheetRect.x + 5;
 
@@ -595,6 +607,21 @@ namespace BetterAnimations
             if (isPlaying)
             {
                 parentWindow.Repaint();
+            }
+
+            // CRITICAL: Consume events at the END after our controls have processed them
+            // This prevents events from passing through to the underlying Animation window controls
+            if (mouseOverOverlay)
+            {
+                if (evt.type == EventType.MouseDown ||
+                    evt.type == EventType.MouseUp ||
+                    evt.type == EventType.MouseDrag ||
+                    evt.type == EventType.MouseMove ||
+                    evt.type == EventType.ScrollWheel ||
+                    evt.type == EventType.ContextClick)
+                {
+                    evt.Use();
+                }
             }
         }
 
