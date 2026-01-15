@@ -291,9 +291,14 @@ namespace BetterAnimations
             {
                 DrawWaveformOverlay(__instance, parent, position);
             }
+            catch (ExitGUIException)
+            {
+                // ExitGUIException is used for control flow in Unity's IMGUI - let it pass through
+                throw;
+            }
             catch (Exception e)
             {
-                Debug.LogError($"[BetterAnimations] Waveform overlay error: {e.Message}");
+                Debug.LogError($"[BetterAnimations] Waveform overlay error: {e.Message}\n{e.StackTrace}");
             }
         }
 
@@ -557,20 +562,24 @@ namespace BetterAnimations
 
                     // Clip region for waveform
                     GUI.BeginClip(new Rect(dopeSheetRect.x, contentY, dopeSheetRect.width, contentHeight));
+                    try
+                    {
+                        Rect localWaveformRect = new Rect(
+                            time0X - dopeSheetRect.x,  // Start exactly at timeline position 0
+                            0,
+                            waveformWidth,
+                            contentHeight
+                        );
 
-                    Rect localWaveformRect = new Rect(
-                        time0X - dopeSheetRect.x,  // Start exactly at timeline position 0
-                        0,
-                        waveformWidth,
-                        contentHeight
-                    );
-
-                    Color oldColor = GUI.color;
-                    GUI.color = waveformColor;
-                    GUI.DrawTexture(localWaveformRect, waveformTexture, ScaleMode.StretchToFill);
-                    GUI.color = oldColor;
-
-                    GUI.EndClip();
+                        Color oldColor = GUI.color;
+                        GUI.color = waveformColor;
+                        GUI.DrawTexture(localWaveformRect, waveformTexture, ScaleMode.StretchToFill);
+                        GUI.color = oldColor;
+                    }
+                    finally
+                    {
+                        GUI.EndClip();
+                    }
 
                     // Draw grid lines (vertical lines every 5 seconds)
                     for (float t = 0; t <= audioClip.length; t += 5f)
