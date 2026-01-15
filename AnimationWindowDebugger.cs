@@ -4,6 +4,7 @@ using System;
 using System.Reflection;
 using System.Linq;
 using System.Collections.Generic;
+using System.Text;
 
 namespace BetterAnimations
 {
@@ -20,8 +21,9 @@ namespace BetterAnimations
         private bool showPublic = true;
         private bool showStatic = true;
         private bool showInstance = true;
+        private StringBuilder outputText = new StringBuilder();
 
-        private enum InspectType
+        private enum TypeFilter
         {
             AnimEditor,
             AnimationWindowState,
@@ -30,7 +32,7 @@ namespace BetterAnimations
             All
         }
 
-        private InspectType currentType = InspectType.All;
+        private TypeFilter currentType = TypeFilter.All;
 
         [MenuItem("Window/Better Animations/Debug Inspector")]
         public static void ShowWindow()
@@ -53,7 +55,7 @@ namespace BetterAnimations
             searchFilter = EditorGUILayout.TextField("Search", searchFilter);
 
             EditorGUILayout.BeginHorizontal();
-            currentType = (InspectType)EditorGUILayout.EnumPopup("Inspect Type", currentType);
+            currentType = (TypeFilter)EditorGUILayout.EnumPopup("Inspect Type", currentType);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
@@ -70,10 +72,18 @@ namespace BetterAnimations
             showInstance = EditorGUILayout.ToggleLeft("Instance", showInstance, GUILayout.Width(80));
             EditorGUILayout.EndHorizontal();
 
+            EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("Refresh", GUILayout.Height(25)))
             {
                 Repaint();
             }
+
+            if (GUILayout.Button("Copy to Clipboard", GUILayout.Height(25)))
+            {
+                CopyAllToClipboard();
+                EditorUtility.DisplayDialog("Copied", "All output has been copied to clipboard!", "OK");
+            }
+            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.EndVertical();
 
@@ -84,41 +94,42 @@ namespace BetterAnimations
 
             try
             {
+                outputText.Clear();
                 Assembly editorAssembly = typeof(Editor).Assembly;
 
-                if (currentType == InspectType.AnimEditor || currentType == InspectType.All)
+                if (currentType == TypeFilter.AnimEditor || currentType == TypeFilter.All)
                 {
                     Type animEditorType = editorAssembly.GetType("UnityEditor.AnimEditor");
                     if (animEditorType != null)
                     {
-                        InspectType(animEditorType, "AnimEditor");
+                        DisplayTypeInfo(animEditorType, "AnimEditor");
                     }
                 }
 
-                if (currentType == InspectType.AnimationWindowState || currentType == InspectType.All)
+                if (currentType == TypeFilter.AnimationWindowState || currentType == TypeFilter.All)
                 {
                     Type animWindowStateType = editorAssembly.GetType("UnityEditorInternal.AnimationWindowState");
                     if (animWindowStateType != null)
                     {
-                        InspectType(animWindowStateType, "AnimationWindowState");
+                        DisplayTypeInfo(animWindowStateType, "AnimationWindowState");
                     }
                 }
 
-                if (currentType == InspectType.DopeSheet || currentType == InspectType.All)
+                if (currentType == TypeFilter.DopeSheet || currentType == TypeFilter.All)
                 {
                     Type dopeSheetType = editorAssembly.GetType("UnityEditor.DopeSheetEditor");
                     if (dopeSheetType != null)
                     {
-                        InspectType(dopeSheetType, "DopeSheetEditor");
+                        DisplayTypeInfo(dopeSheetType, "DopeSheetEditor");
                     }
                 }
 
-                if (currentType == InspectType.AnimationWindow || currentType == InspectType.All)
+                if (currentType == TypeFilter.AnimationWindow || currentType == TypeFilter.All)
                 {
                     Type animWindowType = editorAssembly.GetType("UnityEditor.AnimationWindow");
                     if (animWindowType != null)
                     {
-                        InspectType(animWindowType, "AnimationWindow");
+                        DisplayTypeInfo(animWindowType, "AnimationWindow");
                     }
                 }
             }
@@ -130,7 +141,12 @@ namespace BetterAnimations
             EditorGUILayout.EndScrollView();
         }
 
-        void InspectType(Type type, string typeName)
+        void CopyAllToClipboard()
+        {
+            EditorGUIUtility.systemCopyBuffer = outputText.ToString();
+        }
+
+        void DisplayTypeInfo(Type type, string typeName)
         {
             EditorGUILayout.BeginVertical("box");
 
@@ -139,6 +155,10 @@ namespace BetterAnimations
             headerStyle.fontSize = 14;
             headerStyle.normal.textColor = new Color(0.3f, 0.8f, 1f);
             EditorGUILayout.LabelField($"═══ {typeName} ═══", headerStyle);
+
+            outputText.AppendLine($"\n═══ {typeName} ═══");
+            outputText.AppendLine($"Full Name: {type.FullName}");
+            outputText.AppendLine();
 
             EditorGUILayout.LabelField($"Full Name: {type.FullName}", EditorStyles.miniLabel);
             EditorGUILayout.Space();
@@ -154,6 +174,8 @@ namespace BetterAnimations
             if (showMethods)
             {
                 EditorGUILayout.LabelField("▼ Methods", EditorStyles.boldLabel);
+                outputText.AppendLine("▼ Methods");
+
                 var methods = type.GetMethods(flags)
                     .Where(m => !m.IsSpecialName) // Exclude property getters/setters
                     .OrderBy(m => m.Name);
@@ -167,12 +189,15 @@ namespace BetterAnimations
                     DrawMethod(method);
                 }
                 EditorGUILayout.Space();
+                outputText.AppendLine();
             }
 
             // Fields
             if (showFields)
             {
                 EditorGUILayout.LabelField("▼ Fields", EditorStyles.boldLabel);
+                outputText.AppendLine("▼ Fields");
+
                 var fields = type.GetFields(flags).OrderBy(f => f.Name);
 
                 foreach (var field in fields)
@@ -184,12 +209,15 @@ namespace BetterAnimations
                     DrawField(field);
                 }
                 EditorGUILayout.Space();
+                outputText.AppendLine();
             }
 
             // Properties
             if (showProperties)
             {
                 EditorGUILayout.LabelField("▼ Properties", EditorStyles.boldLabel);
+                outputText.AppendLine("▼ Properties");
+
                 var properties = type.GetProperties(flags).OrderBy(p => p.Name);
 
                 foreach (var property in properties)
@@ -201,12 +229,15 @@ namespace BetterAnimations
                     DrawProperty(property);
                 }
                 EditorGUILayout.Space();
+                outputText.AppendLine();
             }
 
             // Events
             if (showEvents)
             {
                 EditorGUILayout.LabelField("▼ Events", EditorStyles.boldLabel);
+                outputText.AppendLine("▼ Events");
+
                 var events = type.GetEvents(flags).OrderBy(e => e.Name);
 
                 int eventCount = 0;
@@ -223,8 +254,10 @@ namespace BetterAnimations
                 if (eventCount == 0)
                 {
                     EditorGUILayout.LabelField("  (No events found)", EditorStyles.miniLabel);
+                    outputText.AppendLine("  (No events found)");
                 }
                 EditorGUILayout.Space();
+                outputText.AppendLine();
             }
 
             EditorGUILayout.EndVertical();
@@ -250,6 +283,7 @@ namespace BetterAnimations
 
             string signature = $"  {accessModifier} {staticModifier}{method.ReturnType.Name} {method.Name}({paramStr})";
             EditorGUILayout.LabelField(signature, methodStyle);
+            outputText.AppendLine(signature);
         }
 
         void DrawField(FieldInfo field)
@@ -266,6 +300,7 @@ namespace BetterAnimations
 
             string signature = $"  {accessModifier} {staticModifier}{readonlyModifier}{field.FieldType.Name} {field.Name}";
             EditorGUILayout.LabelField(signature, fieldStyle);
+            outputText.AppendLine(signature);
         }
 
         void DrawProperty(PropertyInfo property)
@@ -294,6 +329,7 @@ namespace BetterAnimations
 
             string signature = $"  {accessModifier} {staticModifier}{property.PropertyType.Name} {property.Name} {getSet}";
             EditorGUILayout.LabelField(signature, propStyle);
+            outputText.AppendLine(signature);
         }
 
         void DrawEvent(EventInfo evt)
@@ -306,6 +342,7 @@ namespace BetterAnimations
 
             string signature = $"  event {evt.EventHandlerType?.Name ?? "?"} {evt.Name}";
             EditorGUILayout.LabelField(signature, eventStyle);
+            outputText.AppendLine(signature);
         }
 
         string GetAccessModifier(MethodBase method)
