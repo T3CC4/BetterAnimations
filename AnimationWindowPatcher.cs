@@ -283,7 +283,7 @@ namespace BetterAnimations
 
             try
             {
-                DrawWaveformOverlay(__instance, position);
+                DrawWaveformOverlay(__instance, parent, position);
             }
             catch (Exception e)
             {
@@ -291,7 +291,7 @@ namespace BetterAnimations
             }
         }
 
-        static void DrawWaveformOverlay(object animEditorInstance, Rect position)
+        static void DrawWaveformOverlay(object animEditorInstance, EditorWindow parentWindow, Rect position)
         {
             Assembly editorAssembly = typeof(Editor).Assembly;
             Type animEditorType = animEditorInstance.GetType();
@@ -343,7 +343,13 @@ namespace BetterAnimations
 
             // Handle all GUI controls BEFORE any clipping
             Event evt = Event.current;
-            bool headerHovered = headerRect.Contains(evt.mousePosition);
+
+            // Consume mouse events over our header to prevent interaction with underlying elements
+            if (headerRect.Contains(evt.mousePosition) &&
+                (evt.type == EventType.MouseDown || evt.type == EventType.MouseUp || evt.type == EventType.MouseDrag))
+            {
+                // Don't use the event yet, let our controls handle it first
+            }
 
             float xOffset = dopeSheetRect.x + 5;
 
@@ -353,7 +359,7 @@ namespace BetterAnimations
             if (newExpanded != isExpanded)
             {
                 isExpanded = newExpanded;
-                GUI.changed = true;
+                parentWindow.Repaint();
             }
             xOffset += 20;
 
@@ -369,7 +375,7 @@ namespace BetterAnimations
                     selectedAudioIndex = newIndex;
                     audioClip = allAudioClips[selectedAudioIndex];
                     CreateWaveform();
-                    GUI.changed = true;
+                    parentWindow.Repaint();
                 }
                 xOffset += 155;
             }
@@ -381,20 +387,24 @@ namespace BetterAnimations
 
             // Refresh button
             Rect refreshRect = new Rect(xOffset, waveformY + 3, 60, 18);
-            if (GUI.Button(refreshRect, "Refresh", EditorStyles.miniButton))
+            if (Event.current.type == EventType.MouseDown && refreshRect.Contains(Event.current.mousePosition))
             {
                 RefreshAudioClips();
-                GUI.changed = true;
+                Event.current.Use();
+                parentWindow.Repaint();
             }
+            GUI.Button(refreshRect, "Refresh", EditorStyles.miniButton);
             xOffset += 65;
 
             // Settings button
             Rect settingsRect = new Rect(xOffset, waveformY + 3, 60, 18);
-            if (GUI.Button(settingsRect, showSettings ? "Hide" : "Settings", EditorStyles.miniButton))
+            if (Event.current.type == EventType.MouseDown && settingsRect.Contains(Event.current.mousePosition))
             {
                 showSettings = !showSettings;
-                GUI.changed = true;
+                Event.current.Use();
+                parentWindow.Repaint();
             }
+            GUI.Button(settingsRect, showSettings ? "Hide" : "Settings", EditorStyles.miniButton);
             xOffset += 65;
 
             if (audioClip != null)
@@ -413,7 +423,7 @@ namespace BetterAnimations
                     {
                         AudioUtility.SetClipVolume(volume);
                     }
-                    GUI.changed = true;
+                    parentWindow.Repaint();
                 }
                 xOffset += 85;
 
@@ -433,7 +443,7 @@ namespace BetterAnimations
                     if (EditorGUI.EndChangeCheck())
                     {
                         waveformHeight = newHeight;
-                        GUI.changed = true;
+                        parentWindow.Repaint();
                     }
                     xOffset += 85;
                 }
@@ -463,7 +473,7 @@ namespace BetterAnimations
                 if (EditorGUI.EndChangeCheck())
                 {
                     waveformColor = newWaveColor;
-                    GUI.changed = true;
+                    parentWindow.Repaint();
                 }
 
                 // Background color
@@ -473,7 +483,7 @@ namespace BetterAnimations
                 if (EditorGUI.EndChangeCheck())
                 {
                     bgColor = newBgColor;
-                    GUI.changed = true;
+                    parentWindow.Repaint();
                 }
 
                 sy += 22;
@@ -485,15 +495,18 @@ namespace BetterAnimations
                 {
                     fadeForm = newFade;
                     CreateWaveform();
-                    GUI.changed = true;
+                    parentWindow.Repaint();
                 }
 
                 // Generate waveform button
-                if (GUI.Button(new Rect(sx + 200, sy, 120, 18), "Regenerate Waveform", EditorStyles.miniButton))
+                Rect regenRect = new Rect(sx + 200, sy, 120, 18);
+                if (Event.current.type == EventType.MouseDown && regenRect.Contains(Event.current.mousePosition))
                 {
                     CreateWaveform();
-                    GUI.changed = true;
+                    Event.current.Use();
+                    parentWindow.Repaint();
                 }
+                GUI.Button(regenRect, "Regenerate Waveform", EditorStyles.miniButton);
 
                 sy += 22;
 
@@ -581,7 +594,7 @@ namespace BetterAnimations
             // Force repaint while playing
             if (isPlaying)
             {
-                parent.Repaint();
+                parentWindow.Repaint();
             }
         }
 
