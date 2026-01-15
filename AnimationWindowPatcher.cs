@@ -7,6 +7,12 @@ using HarmonyLib;
 namespace BetterAnimations
 {
 #if UNITY_EDITOR
+    public enum WaveformPosition
+    {
+        Top,
+        Bottom
+    }
+
     [InitializeOnLoad]
     public static class AnimationWindowPatcher
     {
@@ -20,6 +26,9 @@ namespace BetterAnimations
         public static bool isExpanded = true;
         public static float waveformHeight = 80f;
         public static float volume = 1.0f;
+
+        // Positioning options
+        public static WaveformPosition waveformPosition = WaveformPosition.Bottom;
 
         private static bool isPatched = false;
         private static bool isPlaying = false;
@@ -155,14 +164,23 @@ namespace BetterAnimations
                 bool timeChanged = timeDelta > TIME_CHANGE_THRESHOLD;
                 bool timeJumped = timeDelta > 0.1f; // Significant jump (scrubbing or loop)
 
+                // Detect animation loop (time jumped backwards to near start)
+                bool isLoop = isAnimPlaying && animCurrentTime < lastTime && animCurrentTime < 0.5f && lastTime > 0.5f;
+
                 // Update volume when playing
                 if (isPlaying)
                 {
                     AudioUtility.SetClipVolume(volume);
                 }
 
+                // Handle animation loop - restart audio from beginning
+                if (isLoop && animCurrentTime <= audioClip.length)
+                {
+                    StopAudioPlayback();
+                    StartAudioPlayback(animCurrentTime);
+                }
                 // Handle animation playback start
-                if (isAnimPlaying && timeChanged && !isPlaying && animCurrentTime <= audioClip.length)
+                else if (isAnimPlaying && timeChanged && !isPlaying && animCurrentTime <= audioClip.length)
                 {
                     StartAudioPlayback(animCurrentTime);
                 }
@@ -177,7 +195,7 @@ namespace BetterAnimations
                     StopAudioPlayback();
                 }
                 // Handle timeline position jump during playback
-                else if (isAnimPlaying && isPlaying && timeJumped)
+                else if (isAnimPlaying && isPlaying && timeJumped && !isLoop)
                 {
                     SyncAudioPosition(animCurrentTime);
                 }
@@ -299,16 +317,33 @@ namespace BetterAnimations
             float actualHeight = isExpanded ? waveformHeight : 20f;
             float headerHeight = 20f;
 
-            float timeRulerHeight = 17f;
-            float waveformY = position.y + timeRulerHeight;
+            // Calculate waveform position based on setting
+            float waveformY;
             float waveformStartX = dopeSheetRect.x + translation.x;
 
-            if (waveformY + actualHeight > dopeSheetRect.y)
+            if (waveformPosition == WaveformPosition.Bottom)
             {
-                waveformY = dopeSheetRect.y - actualHeight - 2;
+                // Position at bottom of dopesheet area for better integration
+                waveformY = dopeSheetRect.y + dopeSheetRect.height - actualHeight;
             }
+            else
+            {
+                // Original top position (below time ruler)
+                float timeRulerHeight = 17f;
+                waveformY = position.y + timeRulerHeight;
+
+                if (waveformY + actualHeight > dopeSheetRect.y)
+                {
+                    waveformY = dopeSheetRect.y - actualHeight - 2;
+                }
+            }
+
+            // Draw header with improved styling
             Rect headerRect = new Rect(dopeSheetRect.x, waveformY, dopeSheetRect.width, headerHeight);
-            EditorGUI.DrawRect(headerRect, new Color(0.25f, 0.25f, 0.25f, 1f));
+            EditorGUI.DrawRect(headerRect, new Color(0.22f, 0.22f, 0.22f, 1f));
+
+            // Add subtle top border for better separation
+            EditorGUI.DrawRect(new Rect(dopeSheetRect.x, waveformY, dopeSheetRect.width, 1), new Color(0.4f, 0.4f, 0.4f, 0.5f));
 
             Rect foldoutRect = new Rect(dopeSheetRect.x + 5, waveformY + 2, 200, 16);
             bool newExpanded = EditorGUI.Foldout(foldoutRect, isExpanded, $"♪ {audioClip.name}", true);
@@ -341,11 +376,13 @@ namespace BetterAnimations
                 float contentY = waveformY + headerHeight;
                 float contentHeight = actualHeight - headerHeight;
 
+                // Draw background
                 Rect bgRect = new Rect(dopeSheetRect.x, contentY, dopeSheetRect.width, contentHeight);
                 EditorGUI.DrawRect(bgRect, bgColor);
 
-                EditorGUI.DrawRect(new Rect(dopeSheetRect.x, contentY, dopeSheetRect.width, 1), new Color(0.1f, 0.1f, 0.1f, 0.5f));
-                EditorGUI.DrawRect(new Rect(dopeSheetRect.x, contentY + contentHeight - 1, dopeSheetRect.width, 1), new Color(0.1f, 0.1f, 0.1f, 0.5f));
+                // Draw borders for visual separation
+                EditorGUI.DrawRect(new Rect(dopeSheetRect.x, contentY, dopeSheetRect.width, 1), new Color(0.15f, 0.15f, 0.15f, 0.8f));
+                EditorGUI.DrawRect(new Rect(dopeSheetRect.x, contentY + contentHeight - 1, dopeSheetRect.width, 1), new Color(0.4f, 0.4f, 0.4f, 0.5f));
 
                 GUI.BeginClip(new Rect(dopeSheetRect.x, contentY, dopeSheetRect.width, contentHeight));
 
@@ -363,26 +400,37 @@ namespace BetterAnimations
 
                 GUI.EndClip();
 
-                // Time Indicator (weißer Strich)
-                float currentTimeX = dopeSheetRect.x + ((currentTime - shownArea.x) * pixelsPerSecond);
-                if (currentTimeX >= dopeSheetRect.x && currentTimeX <= dopeSheetRect.x + dopeSheetRect.width)
-                {
-                    Rect indicator = new Rect(currentTimeX -2, contentY, 1, contentHeight);
-                    EditorGUI.DrawRect(indicator, new Color(1f, 1f, 1f, 0.95f));
-
-                    Rect topMarker = new Rect(currentTimeX - 2, contentY, 1, 1);
-                    EditorGUI.DrawRect(topMarker, new Color(1f, 1f, 1f, 0.5f));
-                }
-
-                // Grid-Linien (optional) - vertikale Linien alle 5 Sekunden
+                // Draw grid lines (vertical lines every 5 seconds)
                 for (float t = 0; t <= audioClip.length; t += 5f)
                 {
                     float gridX = dopeSheetRect.x + ((t - shownArea.x) * pixelsPerSecond);
                     if (gridX >= dopeSheetRect.x && gridX <= dopeSheetRect.x + dopeSheetRect.width)
                     {
                         Rect gridLine = new Rect(gridX, contentY, 1, contentHeight);
-                        EditorGUI.DrawRect(gridLine, new Color(1f, 1f, 1f, 0.1f));
+                        EditorGUI.DrawRect(gridLine, new Color(1f, 1f, 1f, 0.08f));
+
+                        // Time labels on grid
+                        if (t > 0)
+                        {
+                            GUIStyle timeStyle = new GUIStyle(EditorStyles.miniLabel);
+                            timeStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f, 0.8f);
+                            timeStyle.fontSize = 9;
+                            GUI.Label(new Rect(gridX + 2, contentY + 2, 40, 12), $"{t:F0}s", timeStyle);
+                        }
                     }
+                }
+
+                // Time Indicator (playhead)
+                float currentTimeX = dopeSheetRect.x + ((currentTime - shownArea.x) * pixelsPerSecond);
+                if (currentTimeX >= dopeSheetRect.x && currentTimeX <= dopeSheetRect.x + dopeSheetRect.width)
+                {
+                    // Draw playhead line with improved visibility
+                    Rect indicator = new Rect(currentTimeX - 1, contentY, 2, contentHeight);
+                    EditorGUI.DrawRect(indicator, new Color(1f, 0.3f, 0.3f, 0.9f));
+
+                    // Draw playhead marker at top
+                    Rect topMarker = new Rect(currentTimeX - 3, contentY - 1, 6, 3);
+                    EditorGUI.DrawRect(topMarker, new Color(1f, 0.3f, 0.3f, 1f));
                 }
             }
         }
