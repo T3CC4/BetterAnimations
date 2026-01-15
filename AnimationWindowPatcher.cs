@@ -191,6 +191,12 @@ namespace BetterAnimations
                 // Detect animation loop (time jumped backwards to near start)
                 bool isLoop = isAnimPlaying && animCurrentTime < lastTime && animCurrentTime < 0.5f && lastTime > 0.5f;
 
+                // Continuously apply volume while playing (some Unity versions need this every frame)
+                if (isPlaying)
+                {
+                    AudioUtility.SetClipVolume(volume);
+                }
+
                 // Handle animation loop - restart audio from beginning
                 if (isLoop && animCurrentTime <= audioClip.length)
                 {
@@ -431,10 +437,7 @@ namespace BetterAnimations
                 if (EditorGUI.EndChangeCheck())
                 {
                     volume = newVolume;
-                    if (isPlaying)
-                    {
-                        AudioUtility.SetClipVolume(volume);
-                    }
+                    // Volume is applied every frame in UpdateAudioPlayback, no need to call here
                     parentWindow.Repaint();
                 }
                 xOffset += 85;
@@ -608,18 +611,34 @@ namespace BetterAnimations
                 parentWindow.Repaint();
             }
 
-            // CRITICAL: Consume events at the END after our controls have processed them
-            // This prevents events from passing through to the underlying Animation window controls
+            // CRITICAL: Block events to prevent passthrough, but allow our controls to work
+            // Strategy: Only consume events if no control is currently active
             if (mouseOverOverlay)
             {
-                if (evt.type == EventType.MouseDown ||
-                    evt.type == EventType.MouseUp ||
-                    evt.type == EventType.MouseDrag ||
-                    evt.type == EventType.MouseMove ||
-                    evt.type == EventType.ScrollWheel ||
-                    evt.type == EventType.ContextClick)
+                // Calculate the content area (below header and settings panel)
+                float contentStartY = waveformY + headerHeight + settingsPanelHeight;
+                bool mouseOverContentArea = evt.mousePosition.y >= contentStartY;
+
+                // Check if any GUI control is currently hot (being interacted with)
+                bool controlIsHot = GUIUtility.hotControl != 0;
+
+                // Only consume events if:
+                // 1. In content area (always block), OR
+                // 2. In header/settings but no control is hot (block background)
+                bool shouldConsumeEvent = mouseOverContentArea || !controlIsHot;
+
+                if (shouldConsumeEvent)
                 {
-                    evt.Use();
+                    // Only block these event types
+                    if (evt.type == EventType.MouseDown ||
+                        evt.type == EventType.MouseUp ||
+                        evt.type == EventType.MouseDrag ||
+                        evt.type == EventType.MouseMove ||
+                        evt.type == EventType.ScrollWheel ||
+                        evt.type == EventType.ContextClick)
+                    {
+                        evt.Use();
+                    }
                 }
             }
         }
