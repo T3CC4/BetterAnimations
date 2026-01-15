@@ -15,6 +15,7 @@ namespace BetterAnimations
         private Color waveformColor = new Color(1f, 0.3f, 0.3f, 0.6f);
         private Color bgColor = new Color(0.15f, 0.15f, 0.15f, 0.5f);
         private bool fadeForm = true;
+        private float volume = 1.0f;
 
         private int audioIndex = 0;
         private AudioClip[] allAudioClips;
@@ -33,6 +34,16 @@ namespace BetterAnimations
         void OnEnable()
         {
             RefreshAudioClips();
+        }
+
+        void OnDisable()
+        {
+            // Clean up textures to prevent memory leaks
+            if (waveformTexture != null)
+            {
+                DestroyImmediate(waveformTexture);
+                waveformTexture = null;
+            }
         }
 
         void OnGUI()
@@ -64,6 +75,11 @@ namespace BetterAnimations
             waveformColor = EditorGUILayout.ColorField("Waveform Color", waveformColor);
             bgColor = EditorGUILayout.ColorField("Background Color", bgColor);
             fadeForm = EditorGUILayout.Toggle("Fade Waveform", fadeForm);
+
+            GUILayout.Space(5);
+            EditorGUILayout.LabelField("Audio Volume", EditorStyles.boldLabel);
+            volume = EditorGUILayout.Slider(volume, 0f, 1f);
+            EditorGUILayout.LabelField($"{Mathf.RoundToInt(volume * 100)}%", EditorStyles.miniLabel);
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -126,6 +142,8 @@ namespace BetterAnimations
             AnimationWindowPatcher.waveformTexture = waveformTexture;
             AnimationWindowPatcher.waveformColor = waveformColor;
             AnimationWindowPatcher.bgColor = bgColor;
+            AnimationWindowPatcher.volume = volume;
+            AudioUtility.SetClipVolume(volume);
         }
 
         void HandleDragAndDrop()
@@ -184,6 +202,13 @@ namespace BetterAnimations
         {
             if (audioClip == null) return;
 
+            // Clean up old texture to prevent memory leak
+            if (waveformTexture != null)
+            {
+                DestroyImmediate(waveformTexture);
+                waveformTexture = null;
+            }
+
             int gradientHeight = 256;
             Texture2D gradientTexture = null;
 
@@ -233,6 +258,12 @@ namespace BetterAnimations
 
             waveformTexture.filterMode = FilterMode.Point;
             waveformTexture.Apply();
+
+            // Clean up gradient texture
+            if (gradientTexture != null)
+            {
+                DestroyImmediate(gradientTexture);
+            }
         }
 
         void RefreshAudioClips()

@@ -19,12 +19,24 @@ namespace BetterAnimations
         public static bool isEnabled = false;
         public static bool isExpanded = true;
         public static float waveformHeight = 80f;
+        public static float volume = 1.0f;
 
         private static bool isPatched = false;
         private static bool isPlaying = false;
         private static float lastTime = 0;
         private static float lastLastTime = 0;
         private static bool hasStopped = false;
+
+        // Cache reflection lookups for performance
+        private static Type _animationWindowStateType;
+        private static PropertyInfo _playingProperty;
+        private static PropertyInfo _currentTimeProperty;
+        private static object _cachedStateInstance;
+        private static double _lastStateCacheTime;
+        private const double STATE_CACHE_LIFETIME = 0.5; // Refresh cache every 0.5 seconds
+
+        // Threshold to prevent micro-movements from triggering audio
+        private const float TIME_CHANGE_THRESHOLD = 0.001f;
 
         static AnimationWindowPatcher()
         {
@@ -45,8 +57,9 @@ namespace BetterAnimations
                     return;
                 }
             }
-            catch
+            catch (Exception e)
             {
+                Debug.LogWarning($"[BetterAnimations] EditorStyles not ready, retrying: {e.Message}");
                 EditorApplication.delayCall += DelayedPatch;
                 return;
             }
@@ -101,59 +114,130 @@ namespace BetterAnimations
 
             try
             {
-                Assembly editorAssembly = typeof(Editor).Assembly;
-                Type stateType = editorAssembly.GetType("UnityEditorInternal.AnimationWindowState");
-
-                if (stateType == null) return;
-
-                UnityEngine.Object[] stateInstances = Resources.FindObjectsOfTypeAll(stateType);
-                if (stateInstances.Length == 0) return;
-
-                object state = stateInstances[0];
-
-                PropertyInfo playingProp = stateType.GetProperty("playing");
-                PropertyInfo currentTimeProp = stateType.GetProperty("currentTime");
-
-                bool isAnimPlaying = (bool)playingProp.GetValue(state);
-                float currentTime = (float)currentTimeProp.GetValue(state);
-
-                // Playback Logic
-                if (isAnimPlaying && lastTime != currentTime && !isPlaying && currentTime <= audioClip.length)
+                // Initialize reflection cache if needed
+                if (_animationWindowStateType == null)
                 {
-                    isPlaying = true;
-                    hasStopped = false;
-                    int sampleStart = (int)Math.Ceiling(audioClip.samples * (currentTime / audioClip.length));
-                    AudioUtility.PlayClip(audioClip);
-                    AudioUtility.SetClipSamplePosition(audioClip, sampleStart);
-                }
-                else if (lastTime != currentTime && !isAnimPlaying && currentTime <= audioClip.length)
-                {
-                    // Scrubbing
-                    if (!isPlaying)
+                    Assembly editorAssembly = typeof(Editor).Assembly;
+                    _animationWindowStateType = editorAssembly.GetType("UnityEditorInternal.AnimationWindowState");
+
+                    if (_animationWindowStateType == null)
                     {
-                        hasStopped = false;
-                        AudioUtility.PlayClip(audioClip);
-                        isPlaying = true;
+                        Debug.LogError("[BetterAnimations] AnimationWindowState type not found");
+                        return;
                     }
-                    int sampleStart = (int)Math.Ceiling(audioClip.samples * (currentTime / audioClip.length));
-                    AudioUtility.SetClipSamplePosition(audioClip, sampleStart);
+
+                    _playingProperty = _animationWindowStateType.GetProperty("playing");
+                    _currentTimeProperty = _animationWindowStateType.GetProperty("currentTime");
                 }
-                else if (!isAnimPlaying && (lastLastTime == currentTime || lastTime > currentTime))
+
+                // Cache state instance (refresh periodically to handle window changes)
+                double currentTime = EditorApplication.timeSinceStartup;
+                if (_cachedStateInstance == null || (currentTime - _lastStateCacheTime) > STATE_CACHE_LIFETIME)
                 {
-                    if (!hasStopped)
+                    UnityEngine.Object[] stateInstances = Resources.FindObjectsOfTypeAll(_animationWindowStateType);
+                    if (stateInstances.Length == 0)
                     {
-                        AudioUtility.StopAllClips();
+                        _cachedStateInstance = null;
+                        return;
                     }
-                    isPlaying = false;
-                    hasStopped = true;
+                    _cachedStateInstance = stateInstances[0];
+                    _lastStateCacheTime = currentTime;
+                }
+
+                if (_cachedStateInstance == null || _playingProperty == null || _currentTimeProperty == null)
+                    return;
+
+                bool isAnimPlaying = (bool)_playingProperty.GetValue(_cachedStateInstance);
+                float animCurrentTime = (float)_currentTimeProperty.GetValue(_cachedStateInstance);
+
+                // Calculate time change to avoid micro-stutters
+                float timeDelta = Mathf.Abs(animCurrentTime - lastTime);
+                bool timeChanged = timeDelta > TIME_CHANGE_THRESHOLD;
+                bool timeJumped = timeDelta > 0.1f; // Significant jump (scrubbing or loop)
+
+                // Update volume when playing
+                if (isPlaying)
+                {
+                    AudioUtility.SetClipVolume(volume);
+                }
+
+                // Handle animation playback start
+                if (isAnimPlaying && timeChanged && !isPlaying && animCurrentTime <= audioClip.length)
+                {
+                    StartAudioPlayback(animCurrentTime);
+                }
+                // Handle scrubbing (timeline moved while not playing)
+                else if (timeChanged && !isAnimPlaying && animCurrentTime <= audioClip.length)
+                {
+                    HandleScrubbing(animCurrentTime, timeJumped);
+                }
+                // Handle stop/pause
+                else if (!isAnimPlaying && !timeChanged && isPlaying)
+                {
+                    StopAudioPlayback();
+                }
+                // Handle timeline position jump during playback
+                else if (isAnimPlaying && isPlaying && timeJumped)
+                {
+                    SyncAudioPosition(animCurrentTime);
                 }
 
                 lastLastTime = lastTime;
-                lastTime = currentTime;
+                lastTime = animCurrentTime;
             }
-            catch
+            catch (Exception e)
             {
+                Debug.LogError($"[BetterAnimations] Audio playback error: {e.Message}");
             }
+        }
+
+        private static void StartAudioPlayback(float startTime)
+        {
+            isPlaying = true;
+            hasStopped = false;
+            int sampleStart = Mathf.Clamp(
+                (int)(audioClip.samples * (startTime / audioClip.length)),
+                0,
+                audioClip.samples - 1
+            );
+            AudioUtility.PlayClip(audioClip);
+            AudioUtility.SetClipVolume(volume);
+            AudioUtility.SetClipSamplePosition(audioClip, sampleStart);
+        }
+
+        private static void HandleScrubbing(float currentTime, bool isJump)
+        {
+            if (!isPlaying || isJump)
+            {
+                hasStopped = false;
+                if (!isPlaying)
+                {
+                    AudioUtility.PlayClip(audioClip);
+                    AudioUtility.SetClipVolume(volume);
+                    isPlaying = true;
+                }
+            }
+            SyncAudioPosition(currentTime);
+        }
+
+        private static void SyncAudioPosition(float currentTime)
+        {
+            int sampleStart = Mathf.Clamp(
+                (int)(audioClip.samples * (currentTime / audioClip.length)),
+                0,
+                audioClip.samples - 1
+            );
+            AudioUtility.SetClipSamplePosition(audioClip, sampleStart);
+        }
+
+        private static void StopAudioPlayback()
+        {
+            if (!hasStopped)
+            {
+                AudioUtility.StopAllClips();
+                hasStopped = true;
+            }
+            isPlaying = false;
         }
 
         public static void OnAnimEditorGUI_Postfix(object __instance, EditorWindow parent, Rect position)
@@ -167,6 +251,7 @@ namespace BetterAnimations
             }
             catch (Exception e)
             {
+                Debug.LogError($"[BetterAnimations] Waveform overlay error: {e.Message}");
             }
         }
 
