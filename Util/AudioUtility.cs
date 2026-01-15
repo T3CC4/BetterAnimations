@@ -172,16 +172,29 @@ namespace BetterAnimations
             }
         }
 
+        private static bool _volumeWarningShown = false;
+
         public static void SetClipVolume(float volume)
         {
             try
             {
                 volume = Mathf.Clamp01(volume);
-                SetPreviewClipVolumeMethod?.Invoke(null, new object[] { volume });
+
+                if (SetPreviewClipVolumeMethod == null)
+                {
+                    if (!_volumeWarningShown)
+                    {
+                        Debug.LogWarning("[AudioUtility] SetPreviewClipVolume method not found - volume control unavailable in this Unity version");
+                        _volumeWarningShown = true;
+                    }
+                    return;
+                }
+
+                SetPreviewClipVolumeMethod.Invoke(null, new object[] { volume });
             }
             catch (Exception e)
             {
-                Debug.LogError($"[AudioUtility] Failed to set volume: {e.Message}");
+                Debug.LogError($"[AudioUtility] Failed to set volume: {e.Message}\n{e.StackTrace}");
             }
         }
     }

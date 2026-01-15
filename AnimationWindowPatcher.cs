@@ -191,6 +191,12 @@ namespace BetterAnimations
                 // Detect animation loop (time jumped backwards to near start)
                 bool isLoop = isAnimPlaying && animCurrentTime < lastTime && animCurrentTime < 0.5f && lastTime > 0.5f;
 
+                // Continuously apply volume while playing (some Unity versions need this every frame)
+                if (isPlaying)
+                {
+                    AudioUtility.SetClipVolume(volume);
+                }
+
                 // Handle animation loop - restart audio from beginning
                 if (isLoop && animCurrentTime <= audioClip.length)
                 {
@@ -431,10 +437,7 @@ namespace BetterAnimations
                 if (EditorGUI.EndChangeCheck())
                 {
                     volume = newVolume;
-                    if (isPlaying)
-                    {
-                        AudioUtility.SetClipVolume(volume);
-                    }
+                    // Volume is applied every frame in UpdateAudioPlayback, no need to call here
                     parentWindow.Repaint();
                 }
                 xOffset += 85;
@@ -608,18 +611,25 @@ namespace BetterAnimations
                 parentWindow.Repaint();
             }
 
-            // CRITICAL: Only consume events in non-interactive areas to prevent passthrough
-            // Don't consume events in header/settings areas - controls need them!
-            // Only block events in the waveform content area
+            // CRITICAL: Block events to prevent passthrough, but allow our controls to work
+            // Strategy: Only consume events if no control is currently active
             if (mouseOverOverlay)
             {
                 // Calculate the content area (below header and settings panel)
                 float contentStartY = waveformY + headerHeight + settingsPanelHeight;
                 bool mouseOverContentArea = evt.mousePosition.y >= contentStartY;
 
-                // Only consume events if in the waveform content area (not over controls)
-                if (mouseOverContentArea)
+                // Check if any GUI control is currently hot (being interacted with)
+                bool controlIsHot = GUIUtility.hotControl != 0;
+
+                // Only consume events if:
+                // 1. In content area (always block), OR
+                // 2. In header/settings but no control is hot (block background)
+                bool shouldConsumeEvent = mouseOverContentArea || !controlIsHot;
+
+                if (shouldConsumeEvent)
                 {
+                    // Only block these event types
                     if (evt.type == EventType.MouseDown ||
                         evt.type == EventType.MouseUp ||
                         evt.type == EventType.MouseDrag ||
@@ -629,13 +639,6 @@ namespace BetterAnimations
                     {
                         evt.Use();
                     }
-                }
-                // For header/settings area, only consume non-interactive background events
-                else
-                {
-                    // Let controls handle their events, only block background clicks
-                    // The manual buttons already call evt.Use() when clicked
-                    // Other controls (dropdowns, sliders) handle events automatically
                 }
             }
         }
