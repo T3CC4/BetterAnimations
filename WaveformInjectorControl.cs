@@ -16,6 +16,7 @@ namespace BetterAnimations
         private Color bgColor = new Color(0.15f, 0.15f, 0.15f, 0.5f);
         private bool fadeForm = true;
         private float volume = 1.0f;
+        private WaveformPosition waveformPosition = WaveformPosition.Bottom;
 
         private int audioIndex = 0;
         private AudioClip[] allAudioClips;
@@ -77,6 +78,9 @@ namespace BetterAnimations
             fadeForm = EditorGUILayout.Toggle("Fade Waveform", fadeForm);
 
             GUILayout.Space(5);
+            waveformPosition = (WaveformPosition)EditorGUILayout.EnumPopup("Waveform Position", waveformPosition);
+
+            GUILayout.Space(5);
             EditorGUILayout.LabelField("Audio Volume", EditorStyles.boldLabel);
             volume = EditorGUILayout.Slider(volume, 0f, 1f);
             EditorGUILayout.LabelField($"{Mathf.RoundToInt(volume * 100)}%", EditorStyles.miniLabel);
@@ -126,7 +130,7 @@ namespace BetterAnimations
             // Info
             EditorGUILayout.HelpBox(
                 "This uses Harmony to inject the waveform directly into Unity's Animation Window. " +
-                "Enable injection to see the waveform overlaid on the timeline.",
+                "The audio will loop when the animation loops back to the start.",
                 MessageType.Info
             );
 
@@ -143,6 +147,7 @@ namespace BetterAnimations
             AnimationWindowPatcher.waveformColor = waveformColor;
             AnimationWindowPatcher.bgColor = bgColor;
             AnimationWindowPatcher.volume = volume;
+            AnimationWindowPatcher.waveformPosition = waveformPosition;
             AudioUtility.SetClipVolume(volume);
         }
 
