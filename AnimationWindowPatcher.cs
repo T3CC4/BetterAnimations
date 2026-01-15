@@ -399,7 +399,7 @@ namespace BetterAnimations
 
             // Refresh button
             Rect refreshRect = new Rect(xOffset, waveformY + 3, 60, 18);
-            if (Event.current.type == EventType.MouseDown && refreshRect.Contains(Event.current.mousePosition))
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && refreshRect.Contains(Event.current.mousePosition))
             {
                 RefreshAudioClips();
                 Event.current.Use();
@@ -410,7 +410,7 @@ namespace BetterAnimations
 
             // Settings button
             Rect settingsRect = new Rect(xOffset, waveformY + 3, 60, 18);
-            if (Event.current.type == EventType.MouseDown && settingsRect.Contains(Event.current.mousePosition))
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && settingsRect.Contains(Event.current.mousePosition))
             {
                 showSettings = !showSettings;
                 Event.current.Use();
@@ -471,7 +471,6 @@ namespace BetterAnimations
             // Settings panel (expanded below header)
             if (showSettings && audioClip != null)
             {
-                float settingsPanelHeight = 65f;
                 Rect settingsPanel = new Rect(dopeSheetRect.x, waveformY + headerHeight, dopeSheetRect.width, settingsPanelHeight);
                 EditorGUI.DrawRect(settingsPanel, new Color(0.18f, 0.18f, 0.18f, 1f));
 
@@ -512,7 +511,7 @@ namespace BetterAnimations
 
                 // Generate waveform button
                 Rect regenRect = new Rect(sx + 200, sy, 120, 18);
-                if (Event.current.type == EventType.MouseDown && regenRect.Contains(Event.current.mousePosition))
+                if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && regenRect.Contains(Event.current.mousePosition))
                 {
                     CreateWaveform();
                     Event.current.Use();
